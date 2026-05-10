@@ -1,0 +1,16 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+
+jobs:
+  release:
+    uses: bare-swift/bare-swift/.github/workflows/release.yml@main
+    permissions:
+      contents: write

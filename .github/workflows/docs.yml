@@ -1,0 +1,16 @@
+name: Publish docs
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    uses: bare-swift/bare-swift/.github/workflows/publish-docs.yml@main
+    with:
+      target: Deflate
+    permissions:
+      pages: write
+      id-token: write
+      contents: read

@@ -1,0 +1,13 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: bare-swift/bare-swift/.github/workflows/package-ci.yml@main
+    with:
+      docc-target: Deflate
