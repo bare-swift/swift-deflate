@@ -188,3 +188,62 @@ struct MatcherTests {
         #expect(lenDeep >= lenShallow)
     }
 }
+
+@Suite("Encode-side length/distance code lookups")
+struct EncodeLookupTests {
+    @Test("length 3 → code 257 with 0 extra bits")
+    func length3() {
+        let (code, extra, extraBits) = Tables.encodeLengthCode(3)
+        #expect(code == 257)
+        #expect(extra == 0)
+        #expect(extraBits == 0)
+    }
+
+    @Test("length 11 → code 265 with 1 extra bit (extra=0)")
+    func length11() {
+        let (code, extra, extraBits) = Tables.encodeLengthCode(11)
+        #expect(code == 265)
+        #expect(extra == 0)
+        #expect(extraBits == 1)
+    }
+
+    @Test("length 12 → code 265 with 1 extra bit (extra=1)")
+    func length12() {
+        let (code, extra, extraBits) = Tables.encodeLengthCode(12)
+        #expect(code == 265)
+        #expect(extra == 1)
+        #expect(extraBits == 1)
+    }
+
+    @Test("length 258 → code 285 with 0 extra bits")
+    func length258() {
+        let (code, extra, extraBits) = Tables.encodeLengthCode(258)
+        #expect(code == 285)
+        #expect(extra == 0)
+        #expect(extraBits == 0)
+    }
+
+    @Test("distance 1 → code 0 with 0 extra bits")
+    func distance1() {
+        let (code, extra, extraBits) = Tables.encodeDistanceCode(1)
+        #expect(code == 0)
+        #expect(extra == 0)
+        #expect(extraBits == 0)
+    }
+
+    @Test("distance 5 → code 4 with 1 extra bit (extra=0)")
+    func distance5() {
+        let (code, extra, extraBits) = Tables.encodeDistanceCode(5)
+        #expect(code == 4)
+        #expect(extra == 0)
+        #expect(extraBits == 1)
+    }
+
+    @Test("distance 32768 → code 29 with 13 extra bits")
+    func distance32768() {
+        let (code, extra, extraBits) = Tables.encodeDistanceCode(32_768)
+        #expect(code == 29)
+        #expect(extra == (32_768 - 24_577))
+        #expect(extraBits == 13)
+    }
+}

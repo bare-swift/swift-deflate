@@ -128,4 +128,29 @@ enum Tables {
         }
         return r
     }
+
+    /// Given a literal *match length* (3..258), return the symbol in the
+    /// 257..285 range plus the extra bits to emit.
+    static func encodeLengthCode(_ length: Int) -> (code: Int, extra: UInt32, extraBits: Int) {
+        for i in (0..<lengthBase.count).reversed() {
+            if lengthBase[i] <= length {
+                let code = 257 + i
+                let extra = UInt32(length - lengthBase[i])
+                return (code, extra, lengthExtra[i])
+            }
+        }
+        return (257, 0, 0)
+    }
+
+    /// Given a back-reference distance (1..32 768), return the symbol in
+    /// the 0..29 range plus the extra bits to emit.
+    static func encodeDistanceCode(_ distance: Int) -> (code: Int, extra: UInt32, extraBits: Int) {
+        for i in (0..<distanceBase.count).reversed() {
+            if distanceBase[i] <= distance {
+                let extra = UInt32(distance - distanceBase[i])
+                return (i, extra, distanceExtra[i])
+            }
+        }
+        return (0, 0, 0)
+    }
 }
