@@ -111,3 +111,40 @@ struct BitWriterTests {
         #expect(out.storage == [0x05])
     }
 }
+
+@Suite("Fixed-Huffman literal-only round-trip (.fast level)")
+struct FixedHuffmanLiteralRoundTripTests {
+    @Test("empty input via .fast")
+    func empty() throws {
+        let out = Deflate.encode(Bytes(), level: .fast)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == ContiguousArray<UInt8>())
+    }
+
+    @Test("ASCII 'hello'")
+    func helloLiteral() throws {
+        let input = Bytes([0x68, 0x65, 0x6C, 0x6C, 0x6F])
+        let out = Deflate.encode(input, level: .fast)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("all 256 byte values once")
+    func all256() throws {
+        var bytes = ContiguousArray<UInt8>()
+        for i in 0..<256 { bytes.append(UInt8(i)) }
+        let input = Bytes(bytes)
+        let out = Deflate.encode(input, level: .fast)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("fixed-Huffman output is shorter than stored-block on a compressible input")
+    func fixedShorterThanStored() {
+        let input = Bytes(ContiguousArray(repeating: UInt8(0x41), count: 100))
+        let storedOut = Deflate.encode(input, level: .none)
+        let fixedOut  = Deflate.encode(input, level: .fast)
+        #expect(fixedOut.storage.count < storedOut.storage.count,
+                "fast=\(fixedOut.storage.count) stored=\(storedOut.storage.count)")
+    }
+}

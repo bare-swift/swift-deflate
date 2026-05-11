@@ -16,10 +16,27 @@ struct Deflater {
         switch level {
         case .none:
             return encodeStoredOnly(input)
-        case .fast, .default, .best:
+        case .fast:
+            return encodeFixedLiteralsOnly(input)
+        case .default, .best:
             // Implemented in later tasks.
-            return encodeStoredOnly(input)
+            return encodeFixedLiteralsOnly(input)
         }
+    }
+
+    private func encodeFixedLiteralsOnly(_ input: Bytes) -> Bytes {
+        var writer = BitWriter()
+        writer.writeBits(1, count: 1)
+        writer.writeBits(1, count: 2)
+        for byte in input.storage {
+            let (code, len) = Tables.fixedLitLenCodes[Int(byte)]
+            let rev = Tables.reverseBits(code, bits: len)
+            writer.writeBits(rev, count: len)
+        }
+        let (eobCode, eobLen) = Tables.fixedLitLenCodes[256]
+        let eobRev = Tables.reverseBits(eobCode, bits: eobLen)
+        writer.writeBits(eobRev, count: eobLen)
+        return writer.finish()
     }
 
     private func encodeStoredOnly(_ input: Bytes) -> Bytes {

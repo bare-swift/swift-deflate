@@ -82,4 +82,50 @@ enum Tables {
 
     /// § 3.2.6 — fixed Huffman distance code lengths (all 5 bits).
     static let fixedDistanceLengths: [Int] = [Int](repeating: 5, count: 30)
+
+    /// Encode-side fixed Huffman code for literal/length symbols 0..287.
+    /// Each entry is `(code, bitLength)` where `code` is in **MSB-first**
+    /// reading order. The BitWriter is LSB-first so callers must reverse
+    /// the bits before writing.
+    static let fixedLitLenCodes: [(code: UInt32, length: Int)] = {
+        var out = [(UInt32, Int)](repeating: (0, 0), count: 288)
+        var nextCode = [UInt32](repeating: 0, count: 16)
+        var blCount  = [Int](repeating: 0, count: 16)
+        for l in fixedLitLenLengths { blCount[l] += 1 }
+        var code: UInt32 = 0
+        blCount[0] = 0
+        for bits in 1...15 {
+            code = (code + UInt32(blCount[bits - 1])) << 1
+            nextCode[bits] = code
+        }
+        for i in 0..<288 {
+            let len = fixedLitLenLengths[i]
+            if len != 0 {
+                out[i] = (nextCode[len], len)
+                nextCode[len] += 1
+            }
+        }
+        return out
+    }()
+
+    static let fixedDistanceCodes: [(code: UInt32, length: Int)] = {
+        var out = [(UInt32, Int)](repeating: (0, 0), count: 30)
+        for i in 0..<30 {
+            out[i] = (UInt32(i), 5)
+        }
+        return out
+    }()
+
+    /// Reverse the low `bits` bits of `value`. Required because canonical
+    /// Huffman codes are read MSB-first but the LSB-first BitWriter emits
+    /// bits low-order-first.
+    static func reverseBits(_ value: UInt32, bits: Int) -> UInt32 {
+        var v = value
+        var r: UInt32 = 0
+        for _ in 0..<bits {
+            r = (r << 1) | (v & 1)
+            v >>= 1
+        }
+        return r
+    }
 }
