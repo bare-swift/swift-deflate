@@ -63,3 +63,51 @@ struct StoredBlockRoundTripTests {
         #expect(back.storage == input.storage)
     }
 }
+
+@Suite("BitWriter")
+struct BitWriterTests {
+    @Test("writes a single byte")
+    func singleByte() {
+        var w = BitWriter()
+        w.writeByte(0xAB)
+        let out = w.finish()
+        #expect(out.storage == [0xAB])
+    }
+
+    @Test("LSB-first bit packing")
+    func lsbFirst() {
+        var w = BitWriter()
+        w.writeBits(1, count: 1)
+        w.writeBits(1, count: 2)
+        w.alignToByte()
+        let out = w.finish()
+        #expect(out.storage == [0x03])
+    }
+
+    @Test("multi-byte bit packing")
+    func multiByte() {
+        var w = BitWriter()
+        w.writeBits(0xAB, count: 8)
+        w.writeBits(0xCD, count: 8)
+        let out = w.finish()
+        #expect(out.storage == [0xAB, 0xCD])
+    }
+
+    @Test("alignToByte pads with zeros")
+    func alignPadsZero() {
+        var w = BitWriter()
+        w.writeBits(1, count: 3)
+        w.alignToByte()
+        w.writeByte(0xFF)
+        let out = w.finish()
+        #expect(out.storage == [0b00000001, 0xFF])
+    }
+
+    @Test("partial final byte is flushed on finish")
+    func partialFinalFlushed() {
+        var w = BitWriter()
+        w.writeBits(0x5, count: 4)
+        let out = w.finish()
+        #expect(out.storage == [0x05])
+    }
+}
