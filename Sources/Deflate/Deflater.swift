@@ -17,26 +17,58 @@ struct Deflater {
         case .none:
             return encodeStoredOnly(input)
         case .fast:
-            return encodeFixedLiteralsOnly(input)
+            return encodeFixedHuffman(input, maxChain: 8)
         case .default, .best:
             // Implemented in later tasks.
-            return encodeFixedLiteralsOnly(input)
+            return encodeFixedHuffman(input, maxChain: 32)
         }
     }
 
-    private func encodeFixedLiteralsOnly(_ input: Bytes) -> Bytes {
+    private func encodeFixedHuffman(_ input: Bytes, maxChain: Int) -> Bytes {
         var writer = BitWriter()
         writer.writeBits(1, count: 1)
         writer.writeBits(1, count: 2)
-        for byte in input.storage {
-            let (code, len) = Tables.fixedLitLenCodes[Int(byte)]
-            let rev = Tables.reverseBits(code, bits: len)
-            writer.writeBits(rev, count: len)
+
+        var matcher = Matcher(input.storage, maxChain: maxChain)
+        let total = input.storage.count
+        var pos = 0
+
+        while pos < total {
+            let (matchLen, matchDist) = matcher.findMatch(at: pos)
+            if matchLen >= Matcher.minMatch {
+                emitLengthDistance(length: matchLen, distance: matchDist, writer: &writer)
+                for k in 1..<matchLen where pos + k + Matcher.minMatch <= total {
+                    _ = matcher.findMatch(at: pos + k)
+                }
+                pos += matchLen
+            } else {
+                emitLiteral(input.storage[pos], writer: &writer)
+                pos += 1
+            }
         }
         let (eobCode, eobLen) = Tables.fixedLitLenCodes[256]
-        let eobRev = Tables.reverseBits(eobCode, bits: eobLen)
-        writer.writeBits(eobRev, count: eobLen)
+        writer.writeBits(Tables.reverseBits(eobCode, bits: eobLen), count: eobLen)
         return writer.finish()
+    }
+
+    private func emitLiteral(_ byte: UInt8, writer: inout BitWriter) {
+        let (code, len) = Tables.fixedLitLenCodes[Int(byte)]
+        writer.writeBits(Tables.reverseBits(code, bits: len), count: len)
+    }
+
+    private func emitLengthDistance(length: Int, distance: Int, writer: inout BitWriter) {
+        let (lcode, lextra, lextraBits) = Tables.encodeLengthCode(length)
+        let (lcCode, lcLen) = Tables.fixedLitLenCodes[lcode]
+        writer.writeBits(Tables.reverseBits(lcCode, bits: lcLen), count: lcLen)
+        if lextraBits > 0 {
+            writer.writeBits(lextra, count: lextraBits)
+        }
+        let (dcode, dextra, dextraBits) = Tables.encodeDistanceCode(distance)
+        let (dcCode, dcLen) = Tables.fixedDistanceCodes[dcode]
+        writer.writeBits(Tables.reverseBits(dcCode, bits: dcLen), count: dcLen)
+        if dextraBits > 0 {
+            writer.writeBits(dextra, count: dextraBits)
+        }
     }
 
     private func encodeStoredOnly(_ input: Bytes) -> Bytes {

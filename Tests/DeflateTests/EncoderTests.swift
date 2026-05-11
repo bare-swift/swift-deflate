@@ -247,3 +247,44 @@ struct EncodeLookupTests {
         #expect(extraBits == 13)
     }
 }
+
+@Suite("Fixed-Huffman with LZ77 (.fast level)")
+struct FixedHuffmanLZ77Tests {
+    @Test(".fast on 100 0x41 bytes shrinks via match")
+    func runsCompressViaMatch() throws {
+        let input = Bytes(ContiguousArray(repeating: UInt8(0x41), count: 100))
+        let out = Deflate.encode(input, level: .fast)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+        #expect(out.storage.count < 50, "got \(out.storage.count) bytes")
+    }
+
+    @Test(".fast on the 'abcabcabc' pattern compresses")
+    func patternMatches() throws {
+        var bytes = ContiguousArray<UInt8>()
+        for _ in 0..<200 { bytes.append(contentsOf: [0x61, 0x62, 0x63]) }
+        let input = Bytes(bytes)
+        let out = Deflate.encode(input, level: .fast)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+        #expect(out.storage.count < input.storage.count / 4,
+                "got \(out.storage.count) bytes, input \(input.storage.count)")
+    }
+
+    @Test(".fast on 200 KiB of repeating pattern decompresses correctly")
+    func large() throws {
+        var bytes = ContiguousArray<UInt8>()
+        let pattern: [UInt8] = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
+            0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14,
+            0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E,
+        ]
+        while bytes.count < 200 * 1024 {
+            bytes.append(contentsOf: pattern)
+        }
+        let input = Bytes(bytes)
+        let out = Deflate.encode(input, level: .fast)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+}
