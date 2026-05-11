@@ -383,3 +383,32 @@ struct DynamicHuffmanEncodeTests {
         #expect(back.storage == input.storage)
     }
 }
+
+@Suite("Block-type selection picks smallest")
+struct BlockTypeSelectionTests {
+    @Test("high-entropy input chooses stored or fixed over dynamic")
+    func highEntropyChoosesShorter() throws {
+        var bytes = ContiguousArray<UInt8>()
+        var seed: UInt32 = 0xABCD0123
+        for _ in 0..<512 {
+            seed = seed &* 1_103_515_245 &+ 12_345
+            bytes.append(UInt8(truncatingIfNeeded: seed >> 24))
+        }
+        let input = Bytes(bytes)
+        let out = Deflate.encode(input, level: .best)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+        // Stored is len+5 = 517 bytes; we should never exceed that.
+        #expect(out.storage.count <= 520, "got \(out.storage.count) bytes")
+    }
+
+    @Test("low-entropy input chooses dynamic")
+    func lowEntropyChoosesDynamic() throws {
+        let s = String(repeating: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", count: 100)
+        let input = Bytes(Array(s.utf8))
+        let dynamic = Deflate.encode(input, level: .best)
+        let back = try Deflate.inflate(dynamic)
+        #expect(back.storage == input.storage)
+        #expect(dynamic.storage.count < input.storage.count / 4)
+    }
+}

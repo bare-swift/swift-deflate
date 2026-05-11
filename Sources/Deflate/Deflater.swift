@@ -26,10 +26,36 @@ struct Deflater {
     }
 
     private func encodeDynamic(_ input: Bytes, maxChain: Int) -> Bytes {
-        var writer = BitWriter()
+        // Encode the same payload three ways and pick the smallest.
         let tokens = collectTokens(input, maxChain: maxChain)
-        BlockEncoder.emitDynamic(tokens: tokens, isFinal: true, writer: &writer)
-        return writer.finish()
+        var candidates: [Bytes] = []
+
+        candidates.append(encodeStoredOnly(input))
+
+        do {
+            var writer = BitWriter()
+            writer.writeBits(1, count: 1)
+            writer.writeBits(1, count: 2)
+            for t in tokens {
+                switch t {
+                case .literal(let b):
+                    emitLiteral(b, writer: &writer)
+                case .match(let length, let distance):
+                    emitLengthDistance(length: length, distance: distance, writer: &writer)
+                }
+            }
+            let (eobCode, eobLen) = Tables.fixedLitLenCodes[256]
+            writer.writeBits(Tables.reverseBits(eobCode, bits: eobLen), count: eobLen)
+            candidates.append(writer.finish())
+        }
+
+        do {
+            var writer = BitWriter()
+            BlockEncoder.emitDynamic(tokens: tokens, isFinal: true, writer: &writer)
+            candidates.append(writer.finish())
+        }
+
+        return candidates.min(by: { $0.storage.count < $1.storage.count })!
     }
 
     private func collectTokens(_ input: Bytes, maxChain: Int) -> [Token] {
