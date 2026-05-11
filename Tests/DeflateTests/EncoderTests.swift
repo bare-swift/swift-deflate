@@ -24,3 +24,42 @@ struct EncoderAPITests {
         #expect(!out.storage.isEmpty)
     }
 }
+
+@Suite("Stored-block (.none level) round-trip")
+struct StoredBlockRoundTripTests {
+    @Test("empty input")
+    func empty() throws {
+        let out = Deflate.encode(Bytes(), level: .none)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == ContiguousArray<UInt8>())
+    }
+
+    @Test("single byte")
+    func single() throws {
+        let input = Bytes([0x42])
+        let out = Deflate.encode(input, level: .none)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("100 bytes of 0x41")
+    func runs() throws {
+        let input = Bytes(ContiguousArray(repeating: UInt8(0x41), count: 100))
+        let out = Deflate.encode(input, level: .none)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test("input larger than one stored block (65 KiB forces split)")
+    func largerThanBlock() throws {
+        var bytes = ContiguousArray<UInt8>()
+        bytes.reserveCapacity(65 * 1024)
+        for i in 0..<(65 * 1024) {
+            bytes.append(UInt8(truncatingIfNeeded: i))
+        }
+        let input = Bytes(bytes)
+        let out = Deflate.encode(input, level: .none)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+}
