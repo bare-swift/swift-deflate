@@ -288,3 +288,52 @@ struct FixedHuffmanLZ77Tests {
         #expect(back.storage == input.storage)
     }
 }
+
+@Suite("HuffmanEncoder canonical code construction")
+struct HuffmanEncoderTests {
+    @Test("single-symbol alphabet still emits a usable code")
+    func singleSymbol() {
+        var freqs = [Int](repeating: 0, count: 4)
+        freqs[0] = 100
+        let lengths = HuffmanEncoder.buildLengths(frequencies: freqs, maxBits: 15)
+        #expect(lengths[0] >= 1)
+        #expect(lengths[1] == 0)
+        #expect(lengths[2] == 0)
+        #expect(lengths[3] == 0)
+    }
+
+    @Test("two-symbol alphabet gets length 1 each")
+    func twoSymbols() {
+        let lengths = HuffmanEncoder.buildLengths(frequencies: [50, 50, 0, 0], maxBits: 15)
+        #expect(lengths[0] == 1)
+        #expect(lengths[1] == 1)
+        #expect(lengths[2] == 0)
+        #expect(lengths[3] == 0)
+    }
+
+    @Test("length-limited: maxBits=4 still produces a valid prefix code")
+    func lengthLimited() {
+        var freqs = [Int](repeating: 0, count: 16)
+        for i in 0..<16 { freqs[i] = 1 << i }
+        let lengths = HuffmanEncoder.buildLengths(frequencies: freqs, maxBits: 4)
+        for l in lengths {
+            #expect(l <= 4)
+        }
+        var kraft = 0
+        for l in lengths where l > 0 {
+            kraft += 1 << (15 - l)
+        }
+        #expect(kraft <= 1 << 15)
+    }
+
+    @Test("canonical code generation matches RFC 1951 § 3.2.2")
+    func canonicalGeneration() {
+        let lengths = [3, 3, 3, 3, 2]
+        let codes = HuffmanEncoder.canonicalCodes(lengths: lengths)
+        #expect(codes[0] == 0b010)
+        #expect(codes[1] == 0b011)
+        #expect(codes[2] == 0b100)
+        #expect(codes[3] == 0b101)
+        #expect(codes[4] == 0b00)
+    }
+}
