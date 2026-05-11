@@ -1,6 +1,6 @@
 # swift-deflate
 
-RFC 1951 INFLATE (DEFLATE decompression) — Sendable, Foundation-free.
+RFC 1951 DEFLATE codec — decompression (v0.1+) and compression (v0.2+). Sendable, Foundation-free.
 
 Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 
@@ -20,6 +20,8 @@ Then depend on the `Deflate` product:
 
 ## Usage
 
+### Decompression (v0.1+)
+
 ```swift
 import Deflate
 import Bytes
@@ -28,11 +30,28 @@ let compressed = bytes  // raw DEFLATE bytes (no zlib / gzip framing)
 let decompressed = try Deflate.inflate(compressed)
 ```
 
+### Compression (v0.2+)
+
+```swift
+import Deflate
+import Bytes
+
+let compressed = Deflate.encode(payload, level: .default)
+// Round-trip property: Deflate.inflate(compressed) == payload
+```
+
+Levels:
+
+- `.none` — stored blocks only; no compression. Useful for streams that are already compressed (DEFLATE would only add overhead).
+- `.fast` — fixed Huffman codes plus a short hash-chain. Lowest CPU.
+- `.default` — dynamic Huffman with a depth-32 hash-chain. Balanced.
+- `.best` — dynamic Huffman with a depth-4096 hash-chain + lazy matching. Smallest output; highest CPU.
+
 For HTTP `Content-Encoding: deflate` (which actually means zlib-framed DEFLATE per RFC 7230 § 4.2.2), use **swift-zlib**. For `Content-Encoding: gzip` or `.gz` files, use **swift-gzip**.
 
 ## Scope
 
-`swift-deflate` v0.1 ships **INFLATE only** — DEFLATE decompression. All three RFC 1951 block types are supported:
+`swift-deflate` v0.2 ships **both halves** of RFC 1951 — INFLATE (decompression) and DEFLATE (compression). All three RFC 1951 block types are supported on both sides:
 
 - Stored (uncompressed) — block type `00`.
 - Fixed Huffman — block type `01`.
@@ -43,21 +62,27 @@ Block type `11` is reserved and surfaces as `DeflateError.reservedBlockType`.
 Public API:
 
 - `Deflate.inflate(_ compressed: Bytes) throws(DeflateError) -> Bytes` — single-shot decompression.
+- `Deflate.encode(_ input: Bytes, level: Encoder.Level = .default) -> Bytes` — single-shot compression.
+- `Deflate.Encoder` value type with `.write` + `.finish` for explicit lifecycle.
+- `Deflate.Encoder.Level` enum: `.none`, `.fast`, `.default`, `.best`.
 - `DeflateError` typed-throws enum (8 cases including `truncated`, `invalidHuffmanTable`, `invalidDistance`, `outputTooLarge`).
 
 Implementation:
 
-- LSB-first `BitReader` with peek-and-consume Huffman lookup.
-- Canonical Huffman tables built from RFC 1951 § 3.2.2 with full table replication for shorter codes (one peek + one table read per symbol).
+- LSB-first `BitReader` / `BitWriter` pair with peek-and-consume Huffman lookup on the read side.
+- Canonical Huffman tables built from RFC 1951 § 3.2.2 with full table replication on decode; length-limited package-merge construction on encode.
+- LZ77 hash-chain matcher with configurable max-chain depth and optional lazy matching.
 - Sliding-window back-references up to 32 KiB per the spec.
-- Output capped at 32 MiB in v0.1 (configurable limit lands in v0.2).
+- Encoder block-type selection: stored / fixed / dynamic candidates produced; smallest emitted.
+- Output capped at 32 MiB on decode (configurable limit lands in v0.3).
 
-Per [RFC-0012](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0012-phase-7-anchor-http-body-codecs.md), the **DEFLATE encoder** ships in v0.2. v0.1 prioritizes the dominant use case (HTTP servers / clients receiving compressed payloads); compression is added once the decoder is stable.
+Per [RFC-0014](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0014-phase-9-anchor-compression-encoder-sweep.md), v0.2 commits to **correctness** — zopfli-style size tuning lands as v0.2.x patch releases.
 
-Out of scope for v0.1:
+Out of scope for v0.2:
 
-- DEFLATE encoder. Defer to v0.2.
-- Streaming / partial decompression (`AsyncSequence<Bytes>` or callback-based incremental). Defer to v0.2 alongside the encoder.
+- Streaming / partial encode and decode. v0.2 takes a single full `Bytes` input on each side; streaming API ships in v0.3.
+- Multi-pass size optimization (zopfli-style). Future v0.2.x patch.
+- Preset dictionary encoding. Future v0.3 if requested.
 - Block-by-block introspection / debugging APIs.
 
 ## Documentation

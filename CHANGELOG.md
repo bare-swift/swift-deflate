@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-11
+
+### Added
+- `Deflate.encode(_:level:) -> Bytes` — RFC 1951 DEFLATE encoder.
+  Produces raw bit streams (no zlib / gzip framing).
+- `Deflate.Encoder` value type — single-shot encoder (streaming ships in v0.3 per RFC-0014).
+- `Deflate.Encoder.Level` enum:
+  - `.none` — stored blocks only (no compression).
+  - `.fast` — fixed Huffman codes + short hash-chain.
+  - `.default` — dynamic Huffman codes + depth-32 hash-chain.
+  - `.best` — dynamic Huffman codes + depth-4096 hash-chain + lazy matching.
+- Internal: `BitWriter` (LSB-first), `Matcher` (LZ77 hash-chain), `HuffmanEncoder` (canonical, length-limited via package-merge), `BlockEncoder` (dynamic block emission with run-length-encoded code-lengths).
+- Block-type selection: for the dynamic-Huffman path, the encoder produces stored / fixed / dynamic candidates and emits the smallest. High-entropy inputs fall back to stored / fixed automatically; never exceeds stored-block size + epsilon.
+- 51 tests in 16 suites covering API surface, stored / fixed / dynamic round-trips, matcher correctness, encode-side lookups, Huffman builder, block-type selection, and lazy matching.
+
+### Unchanged from v0.1
+- `Deflate.inflate(_:)` — bit-for-bit unchanged. v0.1 consumers can adopt v0.2 without source edits.
+- `DeflateError` cases — all eight v0.1 cases preserved.
+
+### Limitations (out of scope for v0.2)
+- Streaming encoding. v0.2 takes a single full `Bytes` input; streaming API ships with v0.3.
+- Zopfli-style multi-pass size optimization. v0.2 commits to *correctness*; size/speed tuning lands as v0.2.x patch releases.
+- Preset dictionary encoding. Future v0.3 if requested.
+
 ## [0.1.0] - 2026-05-10
 
 ### Added
