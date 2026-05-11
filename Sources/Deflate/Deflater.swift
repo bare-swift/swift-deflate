@@ -19,15 +19,17 @@ struct Deflater {
         case .fast:
             return encodeFixedHuffman(input, maxChain: 8)
         case .default:
-            return encodeDynamic(input, maxChain: 32)
+            return encodeDynamic(input, maxChain: 32, lazy: false)
         case .best:
-            return encodeDynamic(input, maxChain: 4096)
+            return encodeDynamic(input, maxChain: 4096, lazy: true)
         }
     }
 
-    private func encodeDynamic(_ input: Bytes, maxChain: Int) -> Bytes {
+    private func encodeDynamic(_ input: Bytes, maxChain: Int, lazy: Bool = false) -> Bytes {
         // Encode the same payload three ways and pick the smallest.
-        let tokens = collectTokens(input, maxChain: maxChain)
+        let tokens = lazy
+            ? collectTokensLazy(input, maxChain: maxChain)
+            : collectTokens(input, maxChain: maxChain)
         var candidates: [Bytes] = []
 
         candidates.append(encodeStoredOnly(input))
@@ -66,6 +68,39 @@ struct Deflater {
         while pos < total {
             let (matchLen, matchDist) = matcher.findMatch(at: pos)
             if matchLen >= Matcher.minMatch {
+                tokens.append(.match(length: matchLen, distance: matchDist))
+                for k in 1..<matchLen where pos + k + Matcher.minMatch <= total {
+                    _ = matcher.findMatch(at: pos + k)
+                }
+                pos += matchLen
+            } else {
+                tokens.append(.literal(input.storage[pos]))
+                pos += 1
+            }
+        }
+        return tokens
+    }
+
+    private func collectTokensLazy(_ input: Bytes, maxChain: Int) -> [Token] {
+        var tokens: [Token] = []
+        var matcher = Matcher(input.storage, maxChain: maxChain)
+        let total = input.storage.count
+        var pos = 0
+        while pos < total {
+            let (matchLen, matchDist) = matcher.findMatch(at: pos)
+            if matchLen >= Matcher.minMatch {
+                if pos + 1 < total {
+                    let (nextLen, nextDist) = matcher.findMatch(at: pos + 1)
+                    if nextLen > matchLen {
+                        tokens.append(.literal(input.storage[pos]))
+                        tokens.append(.match(length: nextLen, distance: nextDist))
+                        for k in 1..<nextLen where pos + 1 + k + Matcher.minMatch <= total {
+                            _ = matcher.findMatch(at: pos + 1 + k)
+                        }
+                        pos += 1 + nextLen
+                        continue
+                    }
+                }
                 tokens.append(.match(length: matchLen, distance: matchDist))
                 for k in 1..<matchLen where pos + k + Matcher.minMatch <= total {
                     _ = matcher.findMatch(at: pos + k)

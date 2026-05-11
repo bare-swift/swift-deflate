@@ -412,3 +412,23 @@ struct BlockTypeSelectionTests {
         #expect(dynamic.storage.count < input.storage.count / 4)
     }
 }
+
+@Suite(".best level uses lazy matching")
+struct LazyMatchingTests {
+    @Test(".best is ≤ .default on a lazy-friendly input")
+    func bestSmallerOrEqual() throws {
+        let pattern1: [UInt8] = Array("abcabcabc".utf8)
+        let pattern2: [UInt8] = Array("abcabcabcd".utf8)
+        var bytes: [UInt8] = []
+        for _ in 0..<10 { bytes.append(contentsOf: pattern1) }
+        for _ in 0..<10 { bytes.append(contentsOf: pattern2) }
+        let input = Bytes(bytes)
+        let def  = Deflate.encode(input, level: .default)
+        let best = Deflate.encode(input, level: .best)
+        #expect(best.storage.count <= def.storage.count,
+                "best=\(best.storage.count) default=\(def.storage.count)")
+        // Round-trip too.
+        let back = try Deflate.inflate(best)
+        #expect(back.storage == input.storage)
+    }
+}
