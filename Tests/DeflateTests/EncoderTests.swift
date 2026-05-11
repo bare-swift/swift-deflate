@@ -148,3 +148,43 @@ struct FixedHuffmanLiteralRoundTripTests {
                 "fast=\(fixedOut.storage.count) stored=\(storedOut.storage.count)")
     }
 }
+
+@Suite("Matcher (LZ77 hash-chain)")
+struct MatcherTests {
+    @Test("finds a 5-byte match at distance 5")
+    func findsMatch() {
+        let input = Bytes([0x41, 0x42, 0x43, 0x44, 0x45, 0x41, 0x42, 0x43, 0x44, 0x45])
+        var m = Matcher(input.storage, maxChain: 16)
+        for i in 0..<5 { _ = m.findMatch(at: i) }
+        let (length, distance) = m.findMatch(at: 5)
+        #expect(length >= 5)
+        #expect(distance == 5)
+    }
+
+    @Test("returns (0, 0) when no match")
+    func noMatch() {
+        let input = Bytes([0x41, 0x42, 0x43])
+        var m = Matcher(input.storage, maxChain: 16)
+        let (length, distance) = m.findMatch(at: 0)
+        #expect(length == 0)
+        #expect(distance == 0)
+    }
+
+    @Test("respects max-chain (deeper chain finds longer match)")
+    func chainDepthMatters() {
+        var bytes = ContiguousArray<UInt8>()
+        for _ in 0..<32 { bytes.append(contentsOf: [0x01, 0x02, 0x03]) }
+        for _ in 0..<10 { bytes.append(contentsOf: [0x01, 0x02, 0x03]) }
+        let input = Bytes(bytes)
+        var shallow = Matcher(input.storage, maxChain: 1)
+        var deep    = Matcher(input.storage, maxChain: 4096)
+        for i in 0..<96 {
+            _ = shallow.findMatch(at: i)
+            _ = deep.findMatch(at: i)
+        }
+        let (lenShallow, _) = shallow.findMatch(at: 96)
+        let (lenDeep, _)    = deep.findMatch(at: 96)
+        #expect(lenShallow >= 3)
+        #expect(lenDeep >= lenShallow)
+    }
+}
