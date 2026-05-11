@@ -427,8 +427,29 @@ struct LazyMatchingTests {
         let best = Deflate.encode(input, level: .best)
         #expect(best.storage.count <= def.storage.count,
                 "best=\(best.storage.count) default=\(def.storage.count)")
-        // Round-trip too.
         let back = try Deflate.inflate(best)
         #expect(back.storage == input.storage)
+    }
+}
+
+@Suite("v0.1 API stability — additive only")
+struct V01StabilityTests {
+    @Test("Deflate.inflate(_:) still exists and round-trips with v0.2 encoder")
+    func inflateUnchanged() throws {
+        let helloInput = Bytes(Array("Hello, world!".utf8))
+        let encoded = Deflate.encode(helloInput, level: .fast)
+        let back = try Deflate.inflate(encoded)
+        #expect(back.storage == helloInput.storage)
+    }
+
+    @Test("DeflateError v0.1 cases still present")
+    func errorCasesPresent() {
+        let e: DeflateError = .truncated
+        switch e {
+        case .truncated, .reservedBlockType, .invalidStoredBlockLength,
+             .invalidHuffmanTable, .invalidSymbol, .invalidLengthCode,
+             .invalidDistance, .outputTooLarge:
+            #expect(true)
+        }
     }
 }
