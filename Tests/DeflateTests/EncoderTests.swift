@@ -337,3 +337,49 @@ struct HuffmanEncoderTests {
         #expect(codes[4] == 0b00)
     }
 }
+
+@Suite("Dynamic-Huffman block round-trip (.default level)")
+struct DynamicHuffmanEncodeTests {
+    @Test(".default round-trips 100 0x41 bytes")
+    func runs() throws {
+        let input = Bytes(ContiguousArray(repeating: UInt8(0x41), count: 100))
+        let out = Deflate.encode(input, level: .default)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test(".default round-trips ASCII text")
+    func ascii() throws {
+        let s = String(repeating: "The quick brown fox jumps over the lazy dog. ", count: 60)
+        let input = Bytes(Array(s.utf8))
+        let out = Deflate.encode(input, level: .default)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+
+    @Test(".default beats .fast on biased inputs")
+    func beatsFast() {
+        let s = String(repeating: "aaaabbbbcccdddeeefffgggghhhhiii", count: 200)
+        let input = Bytes(Array(s.utf8))
+        let fast    = Deflate.encode(input, level: .fast)
+        let dynamic = Deflate.encode(input, level: .default)
+        #expect(dynamic.storage.count <= fast.storage.count,
+                "dynamic=\(dynamic.storage.count) fast=\(fast.storage.count)")
+        #expect(dynamic.storage.prefix(3) != fast.storage.prefix(3),
+                "dynamic and fast produced identical headers — dynamic path not engaged")
+    }
+
+    @Test(".default round-trips 64 KiB high-entropy input")
+    func highEntropy() throws {
+        var bytes = ContiguousArray<UInt8>()
+        var seed: UInt32 = 0xDEADBEEF
+        for _ in 0..<65_536 {
+            seed = seed &* 1_103_515_245 &+ 12_345
+            bytes.append(UInt8(truncatingIfNeeded: seed >> 24))
+        }
+        let input = Bytes(bytes)
+        let out = Deflate.encode(input, level: .default)
+        let back = try Deflate.inflate(out)
+        #expect(back.storage == input.storage)
+    }
+}

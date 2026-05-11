@@ -18,10 +18,39 @@ struct Deflater {
             return encodeStoredOnly(input)
         case .fast:
             return encodeFixedHuffman(input, maxChain: 8)
-        case .default, .best:
-            // Implemented in later tasks.
-            return encodeFixedHuffman(input, maxChain: 32)
+        case .default:
+            return encodeDynamic(input, maxChain: 32)
+        case .best:
+            return encodeDynamic(input, maxChain: 4096)
         }
+    }
+
+    private func encodeDynamic(_ input: Bytes, maxChain: Int) -> Bytes {
+        var writer = BitWriter()
+        let tokens = collectTokens(input, maxChain: maxChain)
+        BlockEncoder.emitDynamic(tokens: tokens, isFinal: true, writer: &writer)
+        return writer.finish()
+    }
+
+    private func collectTokens(_ input: Bytes, maxChain: Int) -> [Token] {
+        var tokens: [Token] = []
+        var matcher = Matcher(input.storage, maxChain: maxChain)
+        let total = input.storage.count
+        var pos = 0
+        while pos < total {
+            let (matchLen, matchDist) = matcher.findMatch(at: pos)
+            if matchLen >= Matcher.minMatch {
+                tokens.append(.match(length: matchLen, distance: matchDist))
+                for k in 1..<matchLen where pos + k + Matcher.minMatch <= total {
+                    _ = matcher.findMatch(at: pos + k)
+                }
+                pos += matchLen
+            } else {
+                tokens.append(.literal(input.storage[pos]))
+                pos += 1
+            }
+        }
+        return tokens
     }
 
     private func encodeFixedHuffman(_ input: Bytes, maxChain: Int) -> Bytes {
