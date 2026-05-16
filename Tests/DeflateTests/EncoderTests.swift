@@ -448,7 +448,7 @@ struct V01StabilityTests {
         switch e {
         case .truncated, .reservedBlockType, .invalidStoredBlockLength,
              .invalidHuffmanTable, .invalidSymbol, .invalidLengthCode,
-             .invalidDistance, .outputTooLarge:
+             .invalidDistance, .outputTooLarge, .encoderFinished:
             #expect(true)
         }
     }

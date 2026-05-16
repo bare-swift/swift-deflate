@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-16
+
+### Added
+- **Streaming encoder** — `Deflate.Streaming.Encoder` struct with `init(level:)` / `update(_:)` / `finish()`. Each `update(_:)` emits one DEFLATE block per chunk (dynamic-Huffman for non-`.none` levels; stored blocks for `.none`). `finish()` emits an empty-stored-block terminator (`BFINAL=1, BTYPE=00, LEN=0, NLEN=0xFFFF`).
+- `Deflate.Streaming` public namespace enum.
+- `DeflateError.encoderFinished` — thrown when `finish()` is called on an already-finished encoder.
+- 15 new tests covering round-trip (empty, single chunk, two chunks, 100 tiny chunks, 70 KiB chunk), all four levels, and error/edge cases (double-finish, update-after-finish no-op).
+
+### Dependencies
+- No new dependencies. swift-bytes already in v0.1.
+
+### Stream-format notes
+- Streaming output is **valid DEFLATE** that decodes via the same `Deflate.inflate(_:)` v0.1 API.
+- Empty stream output (`Deflate.Streaming.Encoder()` with no `update` calls + `finish()`) is **byte-equal** to `Deflate.encode(Bytes(), level: .none)`. Regression-tested.
+- Single-update streaming output is **not** byte-equal to `Deflate.encode(_:)` one-shot output because (a) streaming always emits dynamic-Huffman per chunk (no 3-candidate pick-smallest), and (b) streaming adds a 5-byte stored-block terminator.
+- No window carry across chunks in v0.3. LZ77 match search is per-chunk; matches across chunk boundaries are not found. Deferred to v0.4 for compression-ratio improvement.
+- Streaming `.fast` / `.default` / `.best` all emit dynamic-Huffman blocks. The 3-candidate pick-smallest from v0.2 one-shot does not apply in streaming (requires future visibility).
+
+### Migration (v0.2 → v0.3)
+- **Additive only — non-breaking.** All v0.2 APIs unchanged.
+- `Deflate.encode(_:level:)` continues to emit byte-equal output to v0.2 (regression-tested via existing v0.2 round-trip tests).
+- `Deflate.Encoder` struct unchanged.
+- `Deflate.inflate(_:)` unchanged from v0.1.
+- `Deflate.Encoder.Level` unchanged.
+- `DeflateError` adds 1 new case (additive; existing cases unchanged).
+
+### Out of scope (deferred to v0.4+)
+- Window carry across chunks (LZ77 across chunk boundaries — ratio improvement).
+- Streaming inflate.
+- Per-chunk explicit flush API.
+- `reset()` for encoder reuse.
+- Multi-threaded streaming.
+- Block-type optimization (3-candidate pick-smallest in streaming).
+- Fixed-Huffman streaming for `.fast` level.
+
+### Phase 23
+- Tranche 23A of [RFC-0028](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0028-phase-23-anchor-swift-deflate-v0.3-streaming-encoder.md). Continues codec-tier streaming sweep (Phase 22 brotli → Phase 23 deflate → Phase 24+ gzip + zlib → Phase 25+ content-encoding wiring).
+
 ## [0.2.0] - 2026-05-11
 
 ### Added

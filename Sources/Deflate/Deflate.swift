@@ -76,3 +76,9 @@ extension Deflate {
         }
     }
 }
+
+extension Deflate {
+    /// Streaming encoder namespace (v0.3+). For one-shot compression of
+    /// bounded inputs, use ``Deflate/encode(_:level:)``.
+    public enum Streaming: Sendable {}
+}

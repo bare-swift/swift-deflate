@@ -30,4 +30,8 @@ public enum DeflateError: Error, Equatable, Sendable {
     /// Output buffer hit an implementation-imposed cap (32 MiB by
     /// default; expose a configurable limit in v0.2).
     case outputTooLarge
+
+    /// Encoder: ``Deflate/Streaming/Encoder/finish()`` was called twice on
+    /// the same encoder.
+    case encoderFinished
 }

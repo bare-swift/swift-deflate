@@ -1,6 +1,6 @@
 # swift-deflate
 
-RFC 1951 DEFLATE codec — decompression (v0.1+) and compression (v0.2+). Sendable, Foundation-free.
+RFC 1951 DEFLATE codec — inflate (v0.1) + one-shot encode (v0.2) + streaming encode (v0.3). Sendable, Foundation-free.
 
 Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 
@@ -9,7 +9,7 @@ Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 Add to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/bare-swift/swift-deflate.git", from: "0.1.0")
+.package(url: "https://github.com/bare-swift/swift-deflate.git", from: "0.3.0")
 ```
 
 Then depend on the `Deflate` product:
@@ -40,6 +40,32 @@ let compressed = Deflate.encode(payload, level: .default)
 // Round-trip property: Deflate.inflate(compressed) == payload
 ```
 
+### Streaming compression (v0.3+)
+
+```swift
+import Deflate
+import Bytes
+
+var encoder = Deflate.Streaming.Encoder(level: .default)
+encoder.update(chunk1)
+encoder.update(chunk2)
+let compressed = try encoder.finish()
+let plain = try Deflate.inflate(compressed)
+// plain == chunk1 + chunk2
+```
+
+Each `update(_:)` emits one DEFLATE block per chunk (dynamic-Huffman for
+non-`.none` levels; stored blocks for `.none`). Empty chunks are no-ops.
+`finish()` emits a 5-byte empty-stored-block terminator and returns the
+full stream. After `finish()` the encoder is consumed — further
+`update(_:)` calls are silent no-ops; another `finish()` throws
+`encoderFinished`.
+
+`Deflate.Streaming.Encoder` does not carry LZ77 match search across
+chunk boundaries in v0.3. Matches that span chunks are not found,
+slightly hurting compression ratio compared to `Deflate.encode(_:)`
+one-shot. This is a v0.4 deferral.
+
 Levels:
 
 - `.none` — stored blocks only; no compression. Useful for streams that are already compressed (DEFLATE would only add overhead).
@@ -64,8 +90,9 @@ Public API:
 - `Deflate.inflate(_ compressed: Bytes) throws(DeflateError) -> Bytes` — single-shot decompression.
 - `Deflate.encode(_ input: Bytes, level: Encoder.Level = .default) -> Bytes` — single-shot compression.
 - `Deflate.Encoder` value type with `.write` + `.finish` for explicit lifecycle.
+- `Deflate.Streaming.Encoder` value type — streaming compression (v0.3+) with `.init(level:)` + `.update(_:)` + `.finish() throws -> Bytes`.
 - `Deflate.Encoder.Level` enum: `.none`, `.fast`, `.default`, `.best`.
-- `DeflateError` typed-throws enum (8 cases including `truncated`, `invalidHuffmanTable`, `invalidDistance`, `outputTooLarge`).
+- `DeflateError` typed-throws enum (9 cases including `truncated`, `invalidHuffmanTable`, `invalidDistance`, `outputTooLarge`, `encoderFinished`).
 
 Implementation:
 
