@@ -49,4 +49,15 @@ struct BitWriter {
         }
         return Bytes(out)
     }
+
+    /// Return the byte-aligned portion of the accumulated bytes and reset
+    /// the byte buffer to empty. The partial-byte buffer (`buffer` /
+    /// `bitsInBuffer`) is preserved unchanged. Caller of
+    /// `Deflate.Streaming.Encoder.drain()` uses this to pipe accumulated
+    /// bytes incrementally without terminating the stream.
+    mutating func drain() -> Bytes {
+        let result = Bytes(Array(out))
+        out.removeAll(keepingCapacity: true)
+        return result
+    }
 }

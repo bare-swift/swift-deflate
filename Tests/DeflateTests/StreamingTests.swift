@@ -181,6 +181,82 @@ struct StreamingTests {
         #expect(Array(plain.storage) == [0x7F])
     }
 
+    // MARK: - Drain (v0.4)
+
+    @Test("drain() on fresh encoder returns empty Bytes")
+    func drainFresh() throws {
+        var encoder = Deflate.Streaming.Encoder()
+        let drained = encoder.drain()
+        #expect(drained.storage.count == 0)
+    }
+
+    @Test("drain() + finish() concatenated round-trips through inflate")
+    func drainConcatRoundTrip() throws {
+        let payload = Self.bytesFromString("hello world hello world")
+        var encoder = Deflate.Streaming.Encoder()
+        encoder.update(payload)
+        let drained = encoder.drain()
+        let final = try encoder.finish()
+
+        var combined = Bytes()
+        combined.append(contentsOf: drained.storage)
+        combined.append(contentsOf: final.storage)
+        let plain = try Deflate.inflate(combined)
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("multiple drains + finish round-trips")
+    func multipleDrains() throws {
+        var encoder = Deflate.Streaming.Encoder()
+        encoder.update(Self.bytesFromString("first"))
+        var collected = Bytes()
+        collected.append(contentsOf: encoder.drain().storage)
+        encoder.update(Self.bytesFromString("second"))
+        collected.append(contentsOf: encoder.drain().storage)
+        encoder.update(Self.bytesFromString("third"))
+        collected.append(contentsOf: encoder.drain().storage)
+        collected.append(contentsOf: (try encoder.finish()).storage)
+
+        let plain = try Deflate.inflate(collected)
+        #expect(Array(plain.storage) == Array("firstsecondthird".utf8))
+    }
+
+    @Test("drain after finish is silent no-op")
+    func drainAfterFinish() throws {
+        var encoder = Deflate.Streaming.Encoder()
+        encoder.update(Self.bytesFromString("data"))
+        _ = try encoder.finish()
+        let drained = encoder.drain()
+        #expect(drained.storage.count == 0)
+    }
+
+    @Test("non-draining stream byte-equals concatenated-drains stream")
+    func drainConcatByteEquality() throws {
+        let chunk1 = Self.bytesFromString("aaaaaaaaaa")
+        let chunk2 = Self.bytesFromString("bbbbbbbbbb")
+
+        var reference = Deflate.Streaming.Encoder()
+        reference.update(chunk1)
+        reference.update(chunk2)
+        let referenceOutput = try reference.finish()
+
+        var draining = Deflate.Streaming.Encoder()
+        draining.update(chunk1)
+        let d1 = draining.drain()
+        draining.update(chunk2)
+        let d2 = draining.drain()
+        let d3 = try draining.finish()
+
+        var combined = Bytes()
+        combined.append(contentsOf: d1.storage)
+        combined.append(contentsOf: d2.storage)
+        combined.append(contentsOf: d3.storage)
+
+        #expect(Array(combined.storage) == Array(referenceOutput.storage))
+    }
+
+    // MARK: - v0.3 edge cases
+
     @Test("update after finish is silent no-op (then double-finish throws)")
     func updateAfterFinishNoOp() throws {
         var encoder = Deflate.Streaming.Encoder()
