@@ -257,6 +257,174 @@ struct StreamingTests {
 
     // MARK: - v0.3 edge cases
 
+    // MARK: - Streaming Decoder (v0.5)
+
+    @Test("Decoder: empty stream finish returns empty")
+    func decoderEmptyStream() throws(DeflateError) {
+        var decoder = Deflate.Streaming.Decoder()
+        let compressed = Deflate.encode(Bytes())
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(plain.storage.count == 0)
+    }
+
+    @Test("Decoder: single chunk round-trip via v0.2 encoder")
+    func decoderSingleChunkRoundTrip() throws(DeflateError) {
+        let payload = Self.bytesFromString("hello world hello world")
+        let compressed = Deflate.encode(payload)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: multi-chunk input round-trip")
+    func decoderMultiChunkRoundTrip() throws(DeflateError) {
+        let payload = Self.bytesFromString("The quick brown fox jumps over the lazy dog.")
+        let compressed = Deflate.encode(payload)
+        // Split compressed bytes into 3 chunks.
+        let third = compressed.storage.count / 3
+        let c1 = ContiguousArray(compressed.storage[0..<third])
+        let c2 = ContiguousArray(compressed.storage[third..<(2 * third)])
+        let c3 = ContiguousArray(compressed.storage[(2 * third)..<compressed.storage.count])
+
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(Bytes(Array(c1)))
+        decoder.update(Bytes(Array(c2)))
+        decoder.update(Bytes(Array(c3)))
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: many tiny 1-byte chunks round-trip")
+    func decoderTinyChunks() throws(DeflateError) {
+        let payload = Self.bytesFromString("hello")
+        let compressed = Deflate.encode(payload)
+        var decoder = Deflate.Streaming.Decoder()
+        for byte in compressed.storage {
+            decoder.update(Self.bytesFromArray([byte]))
+        }
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: stored block (.none level) round-trip")
+    func decoderStoredBlock() throws(DeflateError) {
+        let payload = Self.bytesFromString("uncompressible random-ish data here")
+        let compressed = Deflate.encode(payload, level: .none)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: fixed-Huffman block (.fast level) round-trip")
+    func decoderFixedHuffman() throws(DeflateError) {
+        let payload = Self.bytesFromString("aaaaaaaaaabbbbbbbbbb")
+        let compressed = Deflate.encode(payload, level: .fast)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: dynamic-Huffman block (.default level) round-trip")
+    func decoderDynamicHuffman() throws(DeflateError) {
+        let payload = Self.bytesFromArray([UInt8](repeating: 0x41, count: 1024))
+        let compressed = Deflate.encode(payload, level: .default)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: 70 KiB payload round-trip")
+    func decoderLargePayload() throws(DeflateError) {
+        let payload = Self.bytesFromArray([UInt8](repeating: 0x42, count: 70 * 1024))
+        let compressed = Deflate.encode(payload, level: .default)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(plain.storage.count == 70 * 1024)
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: truncated input throws .truncated")
+    func decoderTruncatedThrows() {
+        let payload = Self.bytesFromString("hello")
+        let compressed = Deflate.encode(payload)
+        // Truncate by 1 byte.
+        let truncated = ContiguousArray(compressed.storage.dropLast())
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(Bytes(Array(truncated)))
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch DeflateError.truncated {
+            // expected
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test("Decoder: double-finish throws decoderFinished")
+    func decoderDoubleFinishThrows() throws(DeflateError) {
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(Deflate.encode(Self.bytesFromString("data")))
+        _ = try decoder.finish()
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch DeflateError.decoderFinished {
+            // expected
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test("Decoder: update after finish is silent no-op (then double-finish throws)")
+    func decoderUpdateAfterFinishNoOp() throws(DeflateError) {
+        let payload = Self.bytesFromString("first")
+        let compressed = Deflate.encode(payload)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain1 = try decoder.finish()
+        decoder.update(Deflate.encode(Self.bytesFromString("second")))
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw")
+        } catch DeflateError.decoderFinished {
+            // expected
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+        #expect(Array(plain1.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: empty update is no-op (whole flow still works)")
+    func decoderEmptyUpdateNoOp() throws(DeflateError) {
+        let payload = Self.bytesFromString("hello")
+        let compressed = Deflate.encode(payload)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(Bytes())  // no-op
+        decoder.update(compressed)
+        decoder.update(Bytes())  // no-op
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    @Test("Decoder: single-byte payload round-trip")
+    func decoderSingleBytePayload() throws(DeflateError) {
+        let payload = Self.bytesFromArray([0x7F])
+        let compressed = Deflate.encode(payload)
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(compressed)
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == [0x7F])
+    }
+
+    // MARK: - Streaming Encoder (existing v0.3-v0.4 edge cases)
+
     @Test("update after finish is silent no-op (then double-finish throws)")
     func updateAfterFinishNoOp() throws {
         var encoder = Deflate.Streaming.Encoder()

@@ -1,6 +1,6 @@
 # swift-deflate
 
-RFC 1951 DEFLATE codec — inflate (v0.1) + one-shot encode (v0.2) + streaming encode (v0.3). Sendable, Foundation-free.
+RFC 1951 DEFLATE codec — inflate (v0.1) + one-shot encode (v0.2) + streaming encode (v0.3) + drain() for multi-coding composition (v0.4) + streaming-symmetric decode API (v0.5). Sendable, Foundation-free.
 
 Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 
@@ -9,7 +9,7 @@ Part of the [bare-swift](https://github.com/bare-swift) ecosystem.
 Add to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/bare-swift/swift-deflate.git", from: "0.3.0")
+.package(url: "https://github.com/bare-swift/swift-deflate.git", from: "0.5.0")
 ```
 
 Then depend on the `Deflate` product:

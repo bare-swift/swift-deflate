@@ -34,4 +34,8 @@ public enum DeflateError: Error, Equatable, Sendable {
     /// Encoder: ``Deflate/Streaming/Encoder/finish()`` was called twice on
     /// the same encoder.
     case encoderFinished
+
+    /// Decoder: ``Deflate/Streaming/Decoder/finish()`` was called twice on
+    /// the same decoder. Added in v0.5.
+    case decoderFinished
 }

@@ -165,3 +165,70 @@ extension Deflate.Streaming {
         }
     }
 }
+
+extension Deflate.Streaming {
+    /// Streaming DEFLATE decoder. Feed compressed chunks via ``update(_:)``
+    /// and finalize with ``finish()``. The decoder mirrors
+    /// ``Deflate/Streaming/Encoder``'s shape for API symmetry.
+    ///
+    /// Usage:
+    /// ```swift
+    /// var decoder = Deflate.Streaming.Decoder()
+    /// decoder.update(compressedChunk1)
+    /// decoder.update(compressedChunk2)
+    /// let decompressed = try decoder.finish()
+    /// // decompressed == Deflate.inflate(compressedChunk1 + compressedChunk2)
+    /// ```
+    ///
+    /// **v0.5 implementation note:** the decoder buffers all input bytes
+    /// internally and runs `Deflate.inflate(_:)` one-shot at `finish()`
+    /// time. The decoded output is therefore not yielded incrementally
+    /// during `update(_:)`. The API surface is streaming-symmetric with
+    /// ``Encoder``, but **true memory-streaming inflate** (chunk-by-chunk
+    /// output without holding all input in memory) is a v0.6+ candidate
+    /// that requires a state-machine refactor of the internal `Inflater`.
+    /// Adopters needing memory-bounded streaming should defer until v0.6;
+    /// adopters wanting only API symmetry can use v0.5 today.
+    ///
+    /// `Decoder` is a value type. Copying mid-stream produces two divergent
+    /// decoders. Treat as single-owner.
+    ///
+    /// After ``finish()`` the decoder is in the finished state.
+    /// ``update(_:)`` after finish is a silent no-op; double-finish throws
+    /// ``DeflateError/decoderFinished``.
+    ///
+    /// Added in v0.5 per RFC-0035.
+    public struct Decoder: Sendable {
+        private enum State: Sendable {
+            case open
+            case finished
+        }
+
+        private var buffer: ContiguousArray<UInt8>
+        private var state: State
+
+        public init() {
+            self.buffer = ContiguousArray<UInt8>()
+            self.state = .open
+        }
+
+        /// Feed a chunk of compressed input. Bytes are buffered internally.
+        /// Empty chunk = no-op. Silent no-op when called after ``finish()``.
+        public mutating func update(_ chunk: Bytes) {
+            guard case .open = state else { return }
+            if chunk.isEmpty { return }
+            buffer.append(contentsOf: chunk.storage)
+        }
+
+        /// Finalize the stream: run `Deflate.inflate(_:)` on the accumulated
+        /// input and return the decompressed output. Throws
+        /// ``DeflateError/decoderFinished`` on double-call. Throws other
+        /// `DeflateError` cases (e.g. `.truncated`, `.invalidHuffmanTable`)
+        /// if the buffered input is not a valid DEFLATE stream.
+        public mutating func finish() throws(DeflateError) -> Bytes {
+            guard case .open = state else { throw .decoderFinished }
+            state = .finished
+            return try Deflate.inflate(Bytes(buffer))
+        }
+    }
+}

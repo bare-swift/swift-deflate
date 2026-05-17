@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-17
+
+### Added
+- **`Deflate.Streaming.Decoder`** — streaming-decode counterpart to v0.3's `Streaming.Encoder`. Mirrors the canonical streaming shape: `init() / update(_:) / finish() throws -> Bytes`. Accepts compressed input chunks; returns the full decompressed output at `finish()`.
+- `DeflateError.decoderFinished` — thrown when `finish()` is called on an already-finished decoder.
+- 13 new tests covering round-trip via v0.2 one-shot encoder (single chunk, multi-chunk, many tiny chunks, .none/.fast/.default block types, 70 KiB payload, single-byte payload), truncated-input error, double-finish error, update-after-finish no-op, empty-update no-op.
+
+### v0.5 implementation note (honest scope under limitation)
+- The decoder **buffers all compressed input internally** and runs `Deflate.inflate(_:)` one-shot at `finish()`. The decoded output is **not yielded incrementally** during `update(_:)`.
+- This ships the **streaming-symmetric API surface** (matching `Streaming.Encoder`) but does **not** provide true memory-streaming inflate.
+- Adopters who only need API symmetry with the encoder side can use v0.5 today.
+- Adopters who need **chunk-by-chunk decoded output without holding all input in memory** should wait for v0.6+ — a true state-machine refactor of the internal `Inflater` is the v0.6+ scope (Phase 31+ candidate if adopter demand surfaces).
+- This is the honest-scope-under-limitation pattern (Phase 25 codified → Phase 28 graduated → Phase 30 instance). Per RFC-0035's brainstorm-decision empowerment, the buffering-wrap path was chosen over the state-machine-refactor path to ship the symmetric API surface in a single sitting.
+
+### Migration (v0.4 → v0.5)
+- **Additive only — non-breaking.** All v0.1-v0.4 APIs unchanged.
+- `Deflate.inflate(_:)` continues byte-for-byte unchanged.
+- `Deflate.encode(_:level:)`, `Deflate.Streaming.Encoder`, `drain()` unchanged.
+- `DeflateError` adds 1 new case (additive).
+
+### Phase 30
+- Tranche 30A of [RFC-0035](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0035-phase-30-anchor-swift-deflate-v0.5-streaming-inflate.md). Opens the streaming-decode side of the codec tier. Sets up Phase 31 for swift-gzip + swift-zlib streaming-decode wrappers (wrapper-pattern downstream).
+
 ## [0.4.0] — 2026-05-17
 
 ### Added
