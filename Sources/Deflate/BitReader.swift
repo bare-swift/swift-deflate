@@ -6,14 +6,57 @@ import Bytes
 /// LSB-first bit reader over a `Bytes` buffer. RFC 1951 § 3.1.1
 /// specifies that bits within a byte are consumed least-significant
 /// first; multi-bit values pack lower-order bits before higher-order.
+///
+/// v0.6: bytes is mutable to support streaming inflate via
+/// ``append(_:)`` and snapshot/restore. v0.1-v0.5 one-shot callers
+/// construct once and never append; semantics preserved byte-for-byte.
 struct BitReader {
-    let bytes: ContiguousArray<UInt8>
-    private var bytePos: Int = 0
-    private(set) var bitsInBuffer: Int = 0
-    private var buffer: UInt32 = 0
+    var bytes: ContiguousArray<UInt8>
+    var bytePos: Int = 0
+    var bitsInBuffer: Int = 0
+    var buffer: UInt32 = 0
 
     init(_ source: Bytes) {
         self.bytes = source.storage
+    }
+
+    init() {
+        self.bytes = ContiguousArray<UInt8>()
+    }
+
+    /// Append more bytes to the underlying buffer. Used by streaming
+    /// inflate to continue decoding when more input arrives. Position
+    /// and bit-buffer state are preserved.
+    mutating func append(_ chunk: ContiguousArray<UInt8>) {
+        bytes.append(contentsOf: chunk)
+    }
+
+    /// Snapshot of read position state. Used by streaming inflate to
+    /// rewind to a clean checkpoint when a read truncates mid-symbol.
+    struct Snapshot {
+        let bytePos: Int
+        let bitsInBuffer: Int
+        let buffer: UInt32
+    }
+
+    func snapshot() -> Snapshot {
+        Snapshot(bytePos: bytePos, bitsInBuffer: bitsInBuffer, buffer: buffer)
+    }
+
+    mutating func restore(_ s: Snapshot) {
+        self.bytePos = s.bytePos
+        self.bitsInBuffer = s.bitsInBuffer
+        self.buffer = s.buffer
+    }
+
+    /// True if `count` whole bytes are available after byte-alignment
+    /// (combined buffered partial bytes + unread bytes in `bytes`).
+    /// Used by streaming stored-block decode to read what's available
+    /// without throwing on partial input.
+    func availableBytesAligned() -> Int {
+        // Whole bytes already in the bit buffer (after alignToByte).
+        let bufferedWholeBytes = bitsInBuffer / 8
+        return bufferedWholeBytes + (bytes.count - bytePos)
     }
 
     /// Read `count` bits (`count <= 24`) as an unsigned integer.

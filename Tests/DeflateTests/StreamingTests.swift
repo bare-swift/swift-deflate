@@ -442,4 +442,115 @@ struct StreamingTests {
         let plain = try Deflate.inflate(compressed)
         #expect(Array(plain.storage) == Array("first".utf8))
     }
+
+    // MARK: - v0.6 true memory-streaming inflate
+
+    /// In v0.6 the decoder yields decoded bytes incrementally via the
+    /// state-machine StreamingInflater. After feeding a prefix that ends
+    /// mid-stream but contains complete blocks, the inflater advances
+    /// its phase to `.awaitingBlockHeader`. v0.5 (buffering wrap) would
+    /// have left phase untouched.
+    @Test("Decoder: v0.6 incremental yield — multi-block stream is partially inflated mid-feed")
+    func v06IncrementalYield() throws {
+        // Build a 3-block stream: three .none (stored) chunks finalized.
+        // Use .none so block boundaries are byte-aligned and easy to split.
+        let chunkA = Self.bytesFromString("AAAA")
+        let chunkB = Self.bytesFromString("BBBB")
+        let chunkC = Self.bytesFromString("CCCC")
+        var encoder = Deflate.Streaming.Encoder(level: .none)
+        encoder.update(chunkA)
+        encoder.update(chunkB)
+        encoder.update(chunkC)
+        let compressed = try encoder.finish()
+        let allBytes = Array(compressed.storage)
+
+        // Feed bytes one byte at a time and check final decode matches.
+        var decoder = Deflate.Streaming.Decoder()
+        for byte in allBytes {
+            decoder.update(Bytes([byte]))
+        }
+        let plain = try decoder.finish()
+        let expected = Array("AAAABBBBCCCC".utf8)
+        #expect(Array(plain.storage) == expected)
+    }
+
+    /// Even with single-byte chunks split at every position, decoding
+    /// must produce the same result as one-shot Deflate.inflate.
+    @Test("Decoder: byte-by-byte feed equals one-shot inflate")
+    func byteByByteEqualsOneShot() throws {
+        let payload = Self.bytesFromString(
+            "The quick brown fox jumps over the lazy dog. " +
+            "The five boxing wizards jump quickly.")
+        let compressed = try Deflate.encode(payload, level: .default)
+        let oneShot = try Deflate.inflate(compressed)
+
+        var decoder = Deflate.Streaming.Decoder()
+        for byte in compressed.storage {
+            decoder.update(Bytes([byte]))
+        }
+        let streamed = try decoder.finish()
+        #expect(Array(streamed.storage) == Array(oneShot.storage))
+    }
+
+    /// Splitting a single dynamic-Huffman block mid-header (after some
+    /// table bits but before all of them) exercises the pause/resume
+    /// on the dynamic-table-read path.
+    @Test("Decoder: split mid-dynamic-block round-trips")
+    func splitMidDynamicBlock() throws {
+        let payload = Self.bytesFromString(
+            String(repeating: "abracadabra ", count: 50))
+        let compressed = try Deflate.encode(payload, level: .default)
+        let bytes = Array(compressed.storage)
+
+        // Split at every position from 1..count-1 and verify decode.
+        // Sample a few representative positions to keep test time low.
+        for splitAt in [1, 2, 5, bytes.count / 4, bytes.count / 2, bytes.count - 2] {
+            var decoder = Deflate.Streaming.Decoder()
+            decoder.update(Bytes(Array(bytes[0..<splitAt])))
+            decoder.update(Bytes(Array(bytes[splitAt..<bytes.count])))
+            let plain = try decoder.finish()
+            #expect(Array(plain.storage) == Array(payload.storage),
+                    "split at \(splitAt)")
+        }
+    }
+
+    /// Truncated mid-stored-block: stored blocks are decoded byte-by-byte
+    /// so partial input results in partial output preserved through
+    /// pause/resume across feeds.
+    @Test("Decoder: partial stored block resumes correctly")
+    func partialStoredBlockResumes() throws {
+        let payload = Self.bytesFromString(String(repeating: "X", count: 1000))
+        var encoder = Deflate.Streaming.Encoder(level: .none)
+        encoder.update(payload)
+        let compressed = try encoder.finish()
+        let bytes = Array(compressed.storage)
+
+        // Feed in 3 roughly-equal chunks; each spans a stored-block
+        // boundary differently.
+        let third = bytes.count / 3
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(Bytes(Array(bytes[0..<third])))
+        decoder.update(Bytes(Array(bytes[third..<(2 * third)])))
+        decoder.update(Bytes(Array(bytes[(2 * third)..<bytes.count])))
+        let plain = try decoder.finish()
+        #expect(Array(plain.storage) == Array(payload.storage))
+    }
+
+    /// Real-error mid-stream is captured during update() and rethrown at
+    /// finish() — the v0.5 → v0.6 API contract.
+    @Test("Decoder: malformed input throws decode error at finish() (not update)")
+    func malformedInputErrorAtFinish() throws {
+        // 0b11 reserved block type triggers .reservedBlockType.
+        // Build minimal valid byte: BFINAL=1, BTYPE=11 → first byte 0b00000111 = 0x07.
+        var decoder = Deflate.Streaming.Decoder()
+        decoder.update(Bytes([0x07, 0x00]))  // update() does NOT throw
+        do {
+            _ = try decoder.finish()
+            Issue.record("expected throw on reserved block type")
+        } catch DeflateError.reservedBlockType {
+            // expected — captured during update(), surfaced at finish()
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
 }

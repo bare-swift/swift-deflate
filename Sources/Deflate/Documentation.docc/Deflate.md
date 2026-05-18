@@ -1,6 +1,6 @@
 # ``Deflate``
 
-RFC 1951 DEFLATE codec — inflate (v0.1) + one-shot encode (v0.2) + streaming encode (v0.3) + drain() for multi-coding composition (v0.4) + streaming-symmetric decode API (v0.5). Sendable, Foundation-free.
+RFC 1951 DEFLATE codec — inflate (v0.1) + one-shot encode (v0.2) + streaming encode (v0.3) + drain() for multi-coding composition (v0.4) + streaming-symmetric decode API (v0.5) + true memory-streaming decode (v0.6). Sendable, Foundation-free.
 
 ## Overview
 

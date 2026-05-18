@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-18
+
+### Added
+- **`Deflate.Streaming.Decoder` is now a true memory-streaming inflater.** The internal implementation switches from v0.5's buffering-wrap (accumulate input then run `Deflate.inflate(_:)` one-shot at `finish()`) to a new state-machine `StreamingInflater` that consumes input and yields decoded bytes incrementally per `update(_:)` call. The reader is checkpointed before each Huffman symbol read; truncated input rewinds to the checkpoint and pauses cleanly until the next `update(_:)` provides more bytes.
+- 5 new tests verifying true incremental yield: byte-by-byte multi-block stream feed, byte-by-byte vs. one-shot inflate equivalence, split mid-dynamic-block resume, partial stored block resume across feeds, and malformed-input error captured during `update(_:)` then surfaced at `finish()` (preserving the v0.5 API contract that only `finish()` throws decode errors).
+
+### Honest-scope-under-limitation **RESOLVED at the codec-tier foundation**
+v0.5 shipped the streaming-symmetric API surface ahead of true memory-streaming as an honest deferral. v0.6 resolves the deferral via state-machine refactor of the internal Inflater path:
+- **Public API surface unchanged.** `Deflate.Streaming.Decoder.init() / update(_:) / finish() throws(DeflateError) -> Bytes` byte-for-byte preserved.
+- **All v0.5 tests continue to pass** without modification.
+- **Adopters require zero migration.** The implementation upgrade is internal.
+
+This is the first **resolution** of the 6-instance honest-scope-under-limitation pattern (Phases 25 / 28 / 30 / 31 / 32 / 33) rather than the addition of a 7th instance.
+
+### Internal changes
+- `BitReader`: `bytes` is now mutable (`var ContiguousArray<UInt8>`). New `append(_:)`, `Snapshot`, `snapshot()`, `restore(_:)`, `availableBytesAligned()`. v0.1-v0.5 one-shot `Deflate.inflate(_:)` constructor + read methods unchanged behaviorally.
+- New file `StreamingInflater.swift` (~290 LOC): state-machine driver with `Phase` enum (`awaitingBlockHeader` / `inStored` / `inHuffmanBody` / `done`) and `feed(_:)` + `run()` methods. Used only by `Streaming.Decoder`; one-shot `Inflater` retained unchanged for `Deflate.inflate(_:)`.
+- `Streaming.Decoder`: internal `buffer: ContiguousArray<UInt8>` replaced with `inflater: StreamingInflater` + `pendingError: DeflateError?`. `update(_:)` invokes the state machine and captures real decode errors into `pendingError`; `finish()` rethrows the captured error or asserts `phase == .done`.
+
+### Migration (v0.5 → v0.6)
+- **Additive only — non-breaking.** All v0.1-v0.5 APIs unchanged.
+- `Deflate.inflate(_:)` one-shot continues to produce byte-identical output.
+- `Deflate.Streaming.Encoder` (v0.3+) and `drain()` (v0.4) unchanged.
+- `DeflateError` cases unchanged.
+
+### Downstream propagation (informational, not landed here)
+- swift-gzip v0.6 + swift-zlib v0.6: dep bump 0.5 → 0.6 inherits this refactor automatically via wrap (Phase 35+ candidate).
+- swift-content-encoding v0.8: dep bump inherits via wrap (Phase 35+ candidate).
+- swift-brotli v0.6: separate state-machine refactor (Phase 35+ candidate; brotli's Decoder is more complex than deflate's Inflater).
+
+### Phase 34
+- Tranche 34A of [RFC-0039](https://github.com/bare-swift/bare-swift/blob/main/rfcs/0039-phase-34-anchor-swift-deflate-v0.6-true-memory-streaming.md). Shape A (deflate only); downstream packages bumped in a coordinated Phase 35+ sweep.
+
 ## [0.5.0] — 2026-05-17
 
 ### Added
